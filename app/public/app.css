@@ -177,7 +177,36 @@ main.wrap { padding-top: 16px; }
 .counter.accent .n { color: var(--aqua); }
 .counter.win .n { color: var(--success); }
 
+/* Visually hidden but still announced -- the page keeps its heading without
+   spending 42px of the fold on a word the nav already shows. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* One-line pointer to the callbacks list further down the page. The list
+   itself sits below the dial card: callbacks are read once at the start of a
+   session, the dial card is returned to after every single call. */
+.strip {
+  display: flex; align-items: center; gap: 9px;
+  min-height: 40px; padding: 8px 12px; margin-bottom: 10px;
+  border: 1px solid var(--o-callback); border-radius: var(--radius);
+  background: rgba(45, 125, 255, 0.10); color: #8FBCFF;
+  font-size: 14px; font-weight: 600;
+}
+.strip:hover { text-decoration: none; filter: brightness(1.12); }
+.strip-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px; border-radius: 999px;
+  background: var(--o-callback); color: #fff;
+  font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;
+}
+
 /* ---------- the dial card ---------- */
+
+/* The hold rides in the pill row rather than taking a line of its own. It is
+   reassurance, not information you act on. */
+.pill-held { border-color: var(--aqua); color: var(--aqua); background: rgba(0, 229, 255, 0.08); }
 
 .dial-name {
   font-family: var(--font-condensed); font-weight: 700;
@@ -185,6 +214,15 @@ main.wrap { padding-top: 16px; }
   margin-bottom: 6px; overflow-wrap: anywhere;
 }
 .dial-meta { color: var(--text-dim); font-size: 14px; margin-bottom: 4px; overflow-wrap: anywhere; }
+
+.dial-note {
+  font-size: 14px; margin-top: 6px; overflow-wrap: anywhere;
+}
+
+/* Address, rating, history -- below the outcome buttons. */
+.dial-context {
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+}
 
 .tel {
   display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -210,6 +248,10 @@ main.wrap { padding-top: 16px; }
   color: #06060A; width: 100%;
 }
 .outcome:active { transform: translateY(1px); }
+/* Three outcomes are links rather than submits. Nothing about them should
+   read as a link -- mobile Safari keeps a hover state after a tap, and an
+   underlined outcome button looks broken. */
+.outcome:hover, .outcome:focus { text-decoration: none; }
 .outcome.wide { grid-column: 1 / -1; min-height: 60px; font-size: 18px; }
 
 .o-no_answer      { background: var(--o-no-answer); color: var(--text); }
@@ -224,7 +266,7 @@ main.wrap { padding-top: 16px; }
 
 .claim {
   display: flex; align-items: center; gap: 8px;
-  border-radius: var(--radius); padding: 9px 12px;
+  border-radius: var(--radius); padding: 7px 12px;
   font-size: 13px; font-weight: 600; margin-bottom: 10px;
   border: 1px solid var(--warn); color: var(--warn);
   background: rgba(255, 176, 32, 0.09);
@@ -281,8 +323,18 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--radius); padding: 11px 13px; margin-bottom: 12px;
   font-size: 14px; border: 1px solid; overflow-wrap: anywhere;
 }
+/* A failed save must be impossible to miss -- it stays full size. */
 .alert-error { border-color: var(--danger); color: var(--danger); background: rgba(255, 77, 94, 0.08); }
-.alert-ok    { border-color: var(--success); color: var(--success); background: rgba(0, 229, 160, 0.08); }
+
+/* A successful save is confirmation, not news: the counter above it already
+   ticked up. Kept to one quiet line so it does not cost the fold on every
+   single lap of the call loop. */
+.alert-ok {
+  border-color: rgba(0, 229, 160, 0.4); color: var(--success);
+  background: rgba(0, 229, 160, 0.06);
+  padding: 5px 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;
+}
 
 /* A <summary> is a real control, so it gets a real target rather than the
    text-height box the browser gives it. */
@@ -464,6 +516,27 @@ tbody tr:hover { background: var(--surface-raised); }
   .outcome.wide { grid-column: span 3; }
   .btn-auto { width: auto; }
   .two-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
+}
+
+/* Short screens -- an iPhone SE has ~614px of usable height once the nav is
+   accounted for. Trim the display type so the phone number and both primary
+   outcome buttons still land above the fold with a claim and a callbacks
+   strip on screen. */
+@media (max-height: 720px) {
+  .dial-name { font-size: 25px; margin-bottom: 4px; }
+  .tel { min-height: 56px; font-size: 22px; margin: 10px 0; }
+  .counter .n { font-size: 23px; }
+  .counter { padding: 6px 8px; }
+  .counter .l { font-size: 10px; margin-top: 2px; }
+  .counters { margin-bottom: 10px; }
+  /* Still well clear of the 44px iOS minimum. */
+  .outcome.wide { min-height: 50px; font-size: 17px; }
+  .outcomes { gap: 7px; }
+  .card { padding: 12px; margin-bottom: 10px; }
+  .strip { min-height: 36px; padding: 7px 12px; margin-bottom: 8px; }
+  .claim { padding: 6px 12px; margin-bottom: 8px; }
+  .alert-ok { padding: 4px 10px; margin-bottom: 8px; }
+  main.wrap { padding-top: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

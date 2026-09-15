@@ -21,7 +21,7 @@ export function todayPage({
   othersClaims, depth, byOperator, flash,
 }) {
   const body = html`
-<h1>Today</h1>
+<h1 class="sr-only">Today</h1>
 
 <div class="counters">
   <div class="counter"><div class="n">${counters.dials}</div><div class="l">Dials</div></div>
@@ -29,20 +29,18 @@ export function todayPage({
   <div class="counter win"><div class="n">${counters.trialsInstalled}</div><div class="l">Trials</div></div>
 </div>
 
-${byOperator.length > 1 ? html`
-  <div class="card">
-    <div class="section-title mb-8">Today by caller</div>
-    ${byOperator.map((row) => html`
-      <div class="row">
-        <div class="row-main"><div class="row-title">${row.called_by}</div></div>
-        <div class="row-side mono">${row.dials} dials · ${row.conversations} convos</div>
-      </div>`)}
-  </div>` : ""}
-
 ${othersClaims.length ? claimBanners(othersClaims) : ""}
 
 ${callbacksDue.length ? html`
-  <div class="card">
+  <a class="strip" href="#callbacks">
+    <span class="strip-n">${callbacksDue.length}</span>
+    <span>callback${callbacksDue.length === 1 ? "" : "s"} due — work these first</span>
+  </a>` : ""}
+
+${company ? dialCard(company) : emptyQueue(depth)}
+
+${callbacksDue.length ? html`
+  <div class="card" id="callbacks">
     <div class="card-head">
       <h2>Callbacks due</h2>
       <span class="pill pill-callback">${callbacksDue.length}</span>
@@ -62,8 +60,6 @@ ${callbacksDue.length ? html`
       </div>`)}
   </div>` : ""}
 
-${company ? dialCard(company) : emptyQueue(depth)}
-
 ${callbacksLater.length ? html`
   <div class="card">
     <div class="section-title mb-8">Later today</div>
@@ -73,6 +69,16 @@ ${callbacksLater.length ? html`
           <div class="row-title"><a href="/company/${cb.id}">${cb.name}</a></div>
           <div class="row-sub">${formatDateTime(cb.callback_at)} · ${cb.called_by}</div>
         </div>
+      </div>`)}
+  </div>` : ""}
+
+${byOperator.length > 1 ? html`
+  <div class="card">
+    <div class="section-title mb-8">Today by caller</div>
+    ${byOperator.map((row) => html`
+      <div class="row">
+        <div class="row-main"><div class="row-title">${row.called_by}</div></div>
+        <div class="row-side mono">${row.dials} dials · ${row.conversations} convos</div>
       </div>`)}
   </div>` : ""}
 
@@ -105,23 +111,13 @@ ${rest > 0 ? html`
 function dialCard(company) {
   return html`
 <div class="card card-raised">
-  <div class="claim mine">
-    <span class="claim-dot" aria-hidden="true"></span>
-    <span>Yours for ${CLAIM_MINUTES} minutes</span>
-  </div>
-
   <div class="dial-name">${company.name}</div>
   <div class="dial-meta">
+    <span class="pill pill-held">Yours ${CLAIM_MINUTES}m</span>
     ${tierPill(company.tier)} ${statusPill(company.status)}
     ${company.niche ? html` ${company.niche}` : ""}
   </div>
-  ${company.address || company.city ? html`
-    <div class="dial-meta">${[company.address, company.city, company.zip].filter(Boolean).join(", ")}</div>` : ""}
-  ${company.google_rating !== null ? html`
-    <div class="dial-meta">${company.google_rating}★ · ${company.review_count ?? 0} reviews</div>` : ""}
-  ${company.last_called_at ? html`
-    <div class="dial-meta">Last called ${relativeTime(company.last_called_at)} · ${company.call_count} call${company.call_count === 1 ? "" : "s"}</div>` : ""}
-  ${company.notes ? html`<div class="small mt-8">${company.notes}</div>` : ""}
+  ${company.notes ? html`<div class="dial-note">${company.notes}</div>` : ""}
 
   <a class="tel" href="tel:${company.phone}">${displayPhone(company.phone)}</a>
 
@@ -150,9 +146,18 @@ function dialCard(company) {
     </form>
   </div>
 
-  <p class="tiny muted text-center mt-10">
+  ${/* Context below the buttons: useful to glance at, never in the way of
+        the tap you came here to make. */ ""}
+  <div class="dial-context">
+    ${company.address || company.city ? html`
+      <div class="dial-meta">${[company.address, company.city, company.zip].filter(Boolean).join(", ")}</div>` : ""}
+    ${company.google_rating !== null ? html`
+      <div class="dial-meta">${company.google_rating}★ · ${company.review_count ?? 0} reviews</div>` : ""}
+    ${company.last_called_at ? html`
+      <div class="dial-meta">Last called ${relativeTime(company.last_called_at)} · ${company.call_count} call${company.call_count === 1 ? "" : "s"}</div>` : html`
+      <div class="dial-meta">Never called</div>`}
     <a class="tap-link" href="/company/${company.id}">Open full record</a>
-  </p>
+  </div>
 </div>`;
 }
 

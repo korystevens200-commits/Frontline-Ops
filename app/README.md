@@ -86,7 +86,7 @@ npm run dev        # same, restarts on file change
 | `DATABASE_URL` | yes | `postgres://user:pass@host:5432/dbname`. Append `?sslmode=require` for a managed database. |
 | `APP_PASSWORD_HASH` | yes | scrypt hash from `npm run hash-password`. Never the plaintext. |
 | `SESSION_SECRET` | yes | 32+ random bytes. Changing it signs everyone out. |
-| `APP_USERS` | no | Comma-separated operator names for the login screen. Default `Kory`. |
+| `APP_USERS` | no | Comma-separated operator names for the login screen. Default `Kory`. Set to `Kory,Isa`. |
 | `PORT` | no | Default 8080. |
 | `LOG_LEVEL` | no | Default `info`. |
 
@@ -158,7 +158,7 @@ fly postgres attach frontline-db          # sets DATABASE_URL
 fly secrets set \
   SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" \
   APP_PASSWORD_HASH='<paste from npm run hash-password>' \
-  APP_USERS='Kory,Partner'
+  APP_USERS='Kory,Isa'
 
 fly deploy
 ```
@@ -172,10 +172,10 @@ exactly the friction that makes someone stop using the tool.
 
 Health check: `GET /healthz` (checks the database, not just the process).
 
-### Adding the second operator
+### Operators
 
 ```bash
-fly secrets set APP_USERS='Kory,<her name>'
+fly secrets set APP_USERS='Kory,Isa'
 ```
 
 Both names then appear on the login screen behind the same password. The name
