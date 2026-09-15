@@ -1,0 +1,9 @@
+company_name,niche,phone,address,city,zip,google_rating,review_count,tier,notes
+SAMPLE - Aire Frio AC Repair,AC,+13055550111,1200 W 49th St,Hialeah,33012,4.6,88,A,Sample row - replace with your real list
+SAMPLE - Hialeah Appliance Pros,Appliance repair,+13055550112,890 E 25th St,Hialeah,33013,4.2,41,A,
+SAMPLE - Calle Ocho Plumbing,Plumbing,+13055550113,1533 SW 8th St,Little Havana,33135,4.8,203,A,Asked for Spanish
+SAMPLE - Westchester Roofing Co,Roofing,+13055550114,8700 Bird Rd,Westchester,33165,3.9,17,B,
+SAMPLE - Sweetwater Auto AC,Auto AC,+13055550115,10600 NW 12th St,Sweetwater,33172,,,B,No rating on Google
+SAMPLE - Refrigeracion Martinez,AC,+13055550116,455 W 29th St,Hialeah,33012,4.9,312,A,Busy shop
+SAMPLE - Flagler Drain Service,Plumbing,+13055550117,3401 W Flagler St,Little Havana,33135,4.1,64,B,"Two locations, ask for owner"
+SAMPLE - Tejados del Sur,Roofing,+13055550118,2020 W 60th St,Hialeah,33016,4.4,29,A,

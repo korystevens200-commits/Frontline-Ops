@@ -1,0 +1,40 @@
+# Frontline Ops command center.
+# Deployed from the app/ directory:  fly deploy -c fly.toml
+#
+# The marketing site at the repository root is a separate, public GitHub Pages
+# deploy and is not part of this image.
+
+app = "frontline-ops"
+primary_region = "mia"          # Miami -- same city as the people using it
+
+[build]
+
+[deploy]
+  # Migrations run once per deploy, before the new machines take traffic. The
+  # runner is lock-guarded and idempotent, so a retried release is harmless.
+  release_command = "node scripts/migrate.js"
+  strategy = "rolling"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Keep one machine warm. A cold start in the middle of a call block is the
+  # kind of friction that makes someone stop using the tool.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

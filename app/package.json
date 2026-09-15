@@ -1,0 +1,24 @@
+{
+  "name": "frontline-ops",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontline Ops command center - internal cold-call operations tool",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "import": "node scripts/import-csv.js",
+    "hash-password": "node scripts/hash-password.js",
+    "test": "node --test tests/*.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "fastify": "^5.2.1",
+    "pg": "^8.13.1"
+  }
+}
