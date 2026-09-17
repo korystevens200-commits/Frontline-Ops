@@ -148,12 +148,38 @@ sit above the fold.
 
 ## Deploying to Fly.io
 
-From the `app/` directory:
+### The usual way: from a browser
+
+`.github/workflows/deploy.yml` runs the whole deploy on a GitHub runner, so no
+laptop is needed. **Actions → Deploy to Fly → Run workflow.**
+
+It needs two repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | What it is |
+|---|---|
+| `FLY_API_TOKEN` | A Fly access token |
+| `APP_PASSWORD` | The password typed at sign-in (10+ characters) |
+
+Every step checks before it acts — the app and the database are created only if
+absent, attach is skipped when `DATABASE_URL` already exists, and an existing
+`SESSION_SECRET` is kept rather than regenerated (regenerating it signs everyone
+out). So re-running is safe and will not build a second database.
+
+The `cluster_id` input skips the database lookup when you already know the id —
+useful if `fly mpg list` misbehaves.
+
+### By hand, from a machine with flyctl
 
 ```bash
 fly launch --no-deploy --copy-config      # once; keeps the fly.toml here
-fly postgres create --name frontline-db --region mia
-fly postgres attach frontline-db          # sets DATABASE_URL
+
+# Managed Postgres. `fly postgres` (unmanaged) is being retired and its region
+# list no longer carries mia.
+fly mpg create --name frontline-db --region iad --org personal \
+  --plan Basic --pg-major-version 17
+
+# attach takes the CLUSTER ID, not the name -- `fly mpg list --org personal`
+fly mpg attach <CLUSTER_ID> --app frontline-ops
 
 fly secrets set \
   SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" \
@@ -162,6 +188,23 @@ fly secrets set \
 
 fly deploy
 ```
+
+### Regions
+
+Both the app and the database sit in `iad` (Ashburn, Virginia).
+
+Miami would have been the obvious home, but Fly deprecated `mia` for new
+machines — and Managed Postgres never offered it. Co-locating the two in `iad`
+matters more than proximity to Hialeah: the distance to a caller's phone is paid
+once per request, while an app-to-database hop is paid several times over.
+
+### Cost
+
+The Basic Managed Postgres plan bills **$38/month** (shared 2× CPU, 1 GB RAM,
+10 GB disk) on top of the app machine. `fly mpg create --help` lists Starter,
+Launch, Scale and Performance as alternatives.
+
+### Notes
 
 `release_command` runs the migrations before new machines take traffic. The
 runner holds an advisory lock and records what it has applied, so a retried
