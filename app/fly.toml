@@ -5,7 +5,14 @@
 # deploy and is not part of this image.
 
 app = "frontline-ops"
-primary_region = "mia"          # Miami -- same city as the people using it
+# Was mia. Fly deprecated Miami for new machines mid-deploy:
+#   "Region mia is deprecated and cannot have new resources provisioned"
+# Fly suggested dfw; iad is the better choice because the Managed Postgres
+# cluster lives there, so the app sits beside its data instead of paying a
+# cross-region hop on every query. The extra distance to Hialeah costs a few
+# milliseconds once per request; the database hop would cost that several
+# times over.
+primary_region = "iad"
 
 [build]
 
