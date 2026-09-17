@@ -26,9 +26,9 @@ on:
         required: true
         default: "frontline-db"
       region:
-        description: "Region (mia = Miami)"
+        description: "Database region (iad = Ashburn VA, the closest one Managed Postgres offers to Miami)"
         required: true
-        default: "mia"
+        default: "iad"
       operators:
         description: "Who can sign in, comma separated"
         required: true
@@ -83,29 +83,51 @@ jobs:
             flyctl apps create "${APP}" --org personal
           fi
 
+      - name: Show what this flyctl offers
+        # Fly retired unmanaged Postgres mid-flight and the replacement's flags
+        # cannot be checked from where this workflow was written. Printing the
+        # help first means that if the create below still fails, the log already
+        # contains exactly what the correct invocation is.
+        run: |
+          flyctl version
+          echo "===== fly mpg ====="
+          flyctl mpg --help 2>&1 || true
+          echo "===== fly mpg create ====="
+          flyctl mpg create --help 2>&1 || true
+          echo "===== fly mpg attach ====="
+          flyctl mpg attach --help 2>&1 || true
+
       - name: Create the database if it does not exist
         run: |
-          if flyctl apps list --json | grep -q "\"Name\": *\"${DB}\""; then
-            echo "Database ${DB} already exists."
-          else
-            echo "Creating database ${DB} in ${REGION}..."
-            flyctl postgres create \
-              --name "${DB}" \
-              --region "${REGION}" \
-              --org personal \
-              --initial-cluster-size 1 \
-              --vm-size shared-cpu-1x \
-              --volume-size 1
+          if flyctl mpg list 2>/dev/null | grep -q "${DB}"; then
+            echo "Database ${DB} already exists — leaving it alone."
+            exit 0
           fi
+
+          echo "Creating Managed Postgres '${DB}' in ${REGION}..."
+          if flyctl mpg create --name "${DB}" --region "${REGION}" --org personal --yes; then
+            echo "Created in ${REGION}."
+            exit 0
+          fi
+
+          echo "::warning::Could not create in ${REGION}. Retrying in iad."
+          if [ "${REGION}" != "iad" ] && \
+             flyctl mpg create --name "${DB}" --region iad --org personal --yes; then
+            echo "::warning::Database created in iad rather than ${REGION}."
+            exit 0
+          fi
+
+          echo "::error::Could not create the database. Regions this flyctl knows about:"
+          flyctl platform regions 2>&1 | head -40 || true
+          exit 1
 
       - name: Connect the database to the app
         run: |
-          # attach fails harmlessly if DATABASE_URL is already set.
           if flyctl secrets list --app "${APP}" | grep -q DATABASE_URL; then
-            echo "DATABASE_URL already set."
-          else
-            flyctl postgres attach "${DB}" --app "${APP}" --yes
+            echo "DATABASE_URL already set — nothing to attach."
+            exit 0
           fi
+          flyctl mpg attach "${DB}" --app "${APP}" --yes
 
       - name: Set the sign-in secrets
         env:
