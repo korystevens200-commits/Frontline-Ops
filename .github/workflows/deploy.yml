@@ -1,0 +1,156 @@
+# Deploy Frontline Ops to Fly.io from a browser.
+#
+# Exists so the deploy needs no laptop: GitHub's runners have flyctl and can
+# reach Fly, which a phone cannot. Start it from the Actions tab.
+#
+# Two repository secrets are required (Settings > Secrets and variables >
+# Actions). They are write-only -- nobody, including anyone reading this file,
+# can read them back out:
+#   FLY_API_TOKEN  - from fly.io/user/personal_access_tokens
+#   APP_PASSWORD   - the password you and Isa will type to sign in
+#
+# Every step checks before it acts, so running this again is safe: it will not
+# make a second database or a second app.
+
+name: Deploy to Fly
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Fly app name (must be unused across all of Fly)"
+        required: true
+        default: "frontline-ops"
+      db_name:
+        description: "Database name"
+        required: true
+        default: "frontline-db"
+      region:
+        description: "Region (mia = Miami)"
+        required: true
+        default: "mia"
+      operators:
+        description: "Who can sign in, comma separated"
+        required: true
+        default: "Kory,Isa"
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app
+
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP:    ${{ inputs.app_name }}
+      DB:     ${{ inputs.db_name }}
+      REGION: ${{ inputs.region }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the two secrets exist
+        run: |
+          missing=0
+          if [ -z "${FLY_API_TOKEN}" ]; then
+            echo "::error::FLY_API_TOKEN is not set. Add it under Settings > Secrets and variables > Actions."
+            missing=1
+          fi
+          if [ -z "${{ secrets.APP_PASSWORD }}" ]; then
+            echo "::error::APP_PASSWORD is not set. Add it under Settings > Secrets and variables > Actions."
+            missing=1
+          fi
+          [ "$missing" = "0" ] || exit 1
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Create the app if it does not exist
+        run: |
+          if flyctl apps list --json | grep -q "\"Name\": *\"${APP}\""; then
+            echo "App ${APP} already exists."
+          else
+            echo "Creating app ${APP}..."
+            flyctl apps create "${APP}" --org personal
+          fi
+
+      - name: Create the database if it does not exist
+        run: |
+          if flyctl apps list --json | grep -q "\"Name\": *\"${DB}\""; then
+            echo "Database ${DB} already exists."
+          else
+            echo "Creating database ${DB} in ${REGION}..."
+            flyctl postgres create \
+              --name "${DB}" \
+              --region "${REGION}" \
+              --org personal \
+              --initial-cluster-size 1 \
+              --vm-size shared-cpu-1x \
+              --volume-size 1
+          fi
+
+      - name: Connect the database to the app
+        run: |
+          # attach fails harmlessly if DATABASE_URL is already set.
+          if flyctl secrets list --app "${APP}" | grep -q DATABASE_URL; then
+            echo "DATABASE_URL already set."
+          else
+            flyctl postgres attach "${DB}" --app "${APP}" --yes
+          fi
+
+      - name: Set the sign-in secrets
+        env:
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          OPERATORS: ${{ inputs.operators }}
+        run: |
+          # hash-password uses only Node built-ins, so nothing to install.
+          HASH="$(node scripts/hash-password.js "${APP_PASSWORD}")"
+
+          # SESSION_SECRET must stay the same between deploys -- regenerating it
+          # signs everyone out, so it is only created the first time.
+          if flyctl secrets list --app "${APP}" | grep -q SESSION_SECRET; then
+            echo "Keeping the existing SESSION_SECRET."
+            flyctl secrets set --app "${APP}" --stage \
+              APP_PASSWORD_HASH="${HASH}" \
+              APP_USERS="${OPERATORS}"
+          else
+            echo "Creating a SESSION_SECRET."
+            SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+            flyctl secrets set --app "${APP}" --stage \
+              APP_PASSWORD_HASH="${HASH}" \
+              APP_USERS="${OPERATORS}" \
+              SESSION_SECRET="${SESSION_SECRET}"
+          fi
+
+      - name: Deploy
+        run: flyctl deploy --app "${APP}" --config fly.toml --remote-only
+
+      - name: Check it answers
+        run: |
+          URL="https://${APP}.fly.dev"
+          echo "Waiting for ${URL} to come up..."
+          for i in $(seq 1 30); do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${URL}/healthz" || true)"
+            if [ "${CODE}" = "200" ]; then
+              echo "Healthy after ${i} tries."
+              echo "### Frontline Ops is live" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Open **${URL}** on your phone and sign in with the password you saved as APP_PASSWORD." >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "The dial queue will be empty until a prospect list is imported. That is expected." >> $GITHUB_STEP_SUMMARY
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::The app deployed but is not answering at ${URL}/healthz."
+          flyctl logs --app "${APP}" --no-tail | tail -50
+          exit 1
