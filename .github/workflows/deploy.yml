@@ -98,36 +98,70 @@ jobs:
           flyctl mpg attach --help 2>&1 || true
 
       - name: Create the database if it does not exist
+        # Flags below are taken from this flyctl's own help output, printed by
+        # the step above. `mpg create` has no --yes: passing one is rejected
+        # outright. --plan is given explicitly so the command cannot stop to
+        # ask a question no one is there to answer.
         run: |
+          echo "Existing clusters:"
+          flyctl mpg list || true
+
           if flyctl mpg list 2>/dev/null | grep -q "${DB}"; then
             echo "Database ${DB} already exists — leaving it alone."
             exit 0
           fi
 
-          echo "Creating Managed Postgres '${DB}' in ${REGION}..."
-          if flyctl mpg create --name "${DB}" --region "${REGION}" --org personal --yes; then
-            echo "Created in ${REGION}."
-            exit 0
-          fi
-
-          echo "::warning::Could not create in ${REGION}. Retrying in iad."
-          if [ "${REGION}" != "iad" ] && \
-             flyctl mpg create --name "${DB}" --region iad --org personal --yes; then
-            echo "::warning::Database created in iad rather than ${REGION}."
-            exit 0
-          fi
-
-          echo "::error::Could not create the database. Regions this flyctl knows about:"
-          flyctl platform regions 2>&1 | head -40 || true
-          exit 1
+          echo "Creating Managed Postgres '${DB}' in ${REGION}, plan Basic..."
+          flyctl mpg create \
+            --name "${DB}" \
+            --region "${REGION}" \
+            --org personal \
+            --plan Basic \
+            --pg-major-version 17
 
       - name: Connect the database to the app
+        # `mpg attach` takes a CLUSTER ID, not the cluster's name, so the id has
+        # to be looked up first. It has no --yes flag either.
         run: |
           if flyctl secrets list --app "${APP}" | grep -q DATABASE_URL; then
             echo "DATABASE_URL already set — nothing to attach."
             exit 0
           fi
-          flyctl mpg attach "${DB}" --app "${APP}" --yes
+
+          echo "Clusters, as JSON:"
+          flyctl mpg list --json || true
+
+          CLUSTER_ID="$(flyctl mpg list --json 2>/dev/null | node -e '
+            let raw = "";
+            process.stdin.on("data", function (d) { raw += d; });
+            process.stdin.on("end", function () {
+              var want = process.argv[1];
+              try {
+                var parsed = JSON.parse(raw);
+                var rows = Array.isArray(parsed)
+                  ? parsed
+                  : (parsed.clusters || parsed.data || parsed.Clusters || []);
+                var hit = rows.find(function (r) {
+                  return (r.name || r.Name) === want;
+                });
+                process.stdout.write(hit ? String(hit.id || hit.ID || "") : "");
+              } catch (e) { /* fall through to the table parse below */ }
+            });
+          ' "${DB}")"
+
+          if [ -z "${CLUSTER_ID}" ]; then
+            echo "JSON lookup found nothing; reading the plain table instead."
+            CLUSTER_ID="$(flyctl mpg list 2>/dev/null \
+              | awk -v name="${DB}" '$0 ~ name { for (i = 1; i <= NF; i++) if ($i == name) { print $1; exit } }')"
+          fi
+
+          if [ -z "${CLUSTER_ID}" ]; then
+            echo "::error::Could not work out the cluster id for ${DB}. The listing above shows what was returned."
+            exit 1
+          fi
+
+          echo "Attaching cluster ${CLUSTER_ID} to ${APP}..."
+          flyctl mpg attach "${CLUSTER_ID}" --app "${APP}"
 
       - name: Set the sign-in secrets
         env:
