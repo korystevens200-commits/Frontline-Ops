@@ -33,6 +33,14 @@ on:
         description: "Who can sign in, comma separated"
         required: true
         default: "Kory,Isa"
+      org:
+        description: "Fly organization slug"
+        required: true
+        default: "personal"
+      cluster_id:
+        description: "Existing database cluster id (optional — skips the lookup entirely)"
+        required: false
+        default: ""
 
 concurrency:
   group: fly-deploy
@@ -51,6 +59,7 @@ jobs:
       APP:    ${{ inputs.app_name }}
       DB:     ${{ inputs.db_name }}
       REGION: ${{ inputs.region }}
+      ORG:    ${{ inputs.org }}
 
     steps:
       - uses: actions/checkout@v4
@@ -98,65 +107,84 @@ jobs:
           flyctl mpg attach --help 2>&1 || true
 
       - name: Create the database if it does not exist
-        # Flags below are taken from this flyctl's own help output, printed by
-        # the step above. `mpg create` has no --yes: passing one is rejected
-        # outright. --plan is given explicitly so the command cannot stop to
-        # ask a question no one is there to answer.
+        # `mpg list` refuses to run without --org on a non-interactive shell
+        # ("slug argument must be specified"), so every list call names it.
+        # When a cluster is created here its id is captured straight from the
+        # output rather than being looked up again afterwards.
+        env:
+          CLUSTER_ID_INPUT: ${{ inputs.cluster_id }}
         run: |
-          echo "Existing clusters:"
-          flyctl mpg list || true
+          set -o pipefail
 
-          if flyctl mpg list 2>/dev/null | grep -q "${DB}"; then
+          if [ -n "${CLUSTER_ID_INPUT}" ]; then
+            echo "Using the cluster id given at run time: ${CLUSTER_ID_INPUT}"
+            echo "CLUSTER_ID=${CLUSTER_ID_INPUT}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "Existing clusters in ${ORG}:"
+          flyctl mpg list --org "${ORG}" || true
+
+          if flyctl mpg list --org "${ORG}" 2>/dev/null | grep -q "${DB}"; then
             echo "Database ${DB} already exists — leaving it alone."
             exit 0
           fi
 
           echo "Creating Managed Postgres '${DB}' in ${REGION}, plan Basic..."
+          CREATE_LOG="$(mktemp)"
           flyctl mpg create \
             --name "${DB}" \
             --region "${REGION}" \
-            --org personal \
+            --org "${ORG}" \
             --plan Basic \
-            --pg-major-version 17
+            --pg-major-version 17 2>&1 | tee "${CREATE_LOG}"
+
+          # The create output ends with a summary block containing "  ID: xxxx".
+          NEW_ID="$(grep -oE '^[[:space:]]*ID:[[:space:]]*[A-Za-z0-9]+' "${CREATE_LOG}" \
+                    | head -1 | awk '{print $2}')"
+          if [ -n "${NEW_ID}" ]; then
+            echo "Captured cluster id ${NEW_ID} from the create output."
+            echo "CLUSTER_ID=${NEW_ID}" >> "$GITHUB_ENV"
+          fi
 
       - name: Connect the database to the app
-        # `mpg attach` takes a CLUSTER ID, not the cluster's name, so the id has
-        # to be looked up first. It has no --yes flag either.
+        # `mpg attach` takes a CLUSTER ID, not a name.
         run: |
           if flyctl secrets list --app "${APP}" | grep -q DATABASE_URL; then
             echo "DATABASE_URL already set — nothing to attach."
             exit 0
           fi
 
-          echo "Clusters, as JSON:"
-          flyctl mpg list --json || true
+          # CLUSTER_ID may already be set by the step above.
+          if [ -z "${CLUSTER_ID:-}" ]; then
+            echo "Clusters in ${ORG}:"
+            flyctl mpg list --org "${ORG}" || true
 
-          CLUSTER_ID="$(flyctl mpg list --json 2>/dev/null | node -e '
-            let raw = "";
-            process.stdin.on("data", function (d) { raw += d; });
-            process.stdin.on("end", function () {
-              var want = process.argv[1];
-              try {
-                var parsed = JSON.parse(raw);
-                var rows = Array.isArray(parsed)
-                  ? parsed
-                  : (parsed.clusters || parsed.data || parsed.Clusters || []);
-                var hit = rows.find(function (r) {
-                  return (r.name || r.Name) === want;
-                });
-                process.stdout.write(hit ? String(hit.id || hit.ID || "") : "");
-              } catch (e) { /* fall through to the table parse below */ }
-            });
-          ' "${DB}")"
+            CLUSTER_ID="$(flyctl mpg list --org "${ORG}" --json 2>/dev/null | node -e '
+              let raw = "";
+              process.stdin.on("data", function (d) { raw += d; });
+              process.stdin.on("end", function () {
+                var want = process.argv[1];
+                try {
+                  var parsed = JSON.parse(raw);
+                  var rows = Array.isArray(parsed)
+                    ? parsed
+                    : (parsed.clusters || parsed.data || parsed.Clusters || []);
+                  var hit = rows.find(function (r) { return (r.name || r.Name) === want; });
+                  process.stdout.write(hit ? String(hit.id || hit.ID || "") : "");
+                } catch (e) { /* table parse below */ }
+              });
+            ' "${DB}")"
+          fi
 
-          if [ -z "${CLUSTER_ID}" ]; then
-            echo "JSON lookup found nothing; reading the plain table instead."
-            CLUSTER_ID="$(flyctl mpg list 2>/dev/null \
+          if [ -z "${CLUSTER_ID:-}" ]; then
+            CLUSTER_ID="$(flyctl mpg list --org "${ORG}" 2>/dev/null \
               | awk -v name="${DB}" '$0 ~ name { for (i = 1; i <= NF; i++) if ($i == name) { print $1; exit } }')"
           fi
 
-          if [ -z "${CLUSTER_ID}" ]; then
-            echo "::error::Could not work out the cluster id for ${DB}. The listing above shows what was returned."
+          if [ -z "${CLUSTER_ID:-}" ]; then
+            echo "::error::Could not work out the cluster id for ${DB}."
+            echo "::error::Re-run this workflow and put the id in the 'cluster_id' box to skip this lookup."
             exit 1
           fi
 
