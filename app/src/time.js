@@ -7,17 +7,30 @@
 
 export const ZONE = "America/New_York";
 
-const PARTS = new Intl.DateTimeFormat("en-US", {
-  timeZone: ZONE,
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit",
-  hour12: false,
-});
+/* Wall-clock parts in a given zone. New York is the display zone for
+   everything operators see; text-back lines carry their own zone for the
+   hours follow-ups may be sent in. */
+const PARTS_BY_ZONE = new Map();
+function partsFormatter(zone) {
+  let formatter = PARTS_BY_ZONE.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false,
+    });
+    PARTS_BY_ZONE.set(zone, formatter);
+  }
+  return formatter;
+}
 
-/* Offset in milliseconds that ZONE is behind/ahead of UTC at a given instant. */
-function zoneOffsetMs(date) {
+const PARTS = partsFormatter(ZONE);
+
+/* Offset in milliseconds that a zone is behind/ahead of UTC at a given instant. */
+function zoneOffsetMs(date, zone = ZONE) {
   const parts = Object.fromEntries(
-    PARTS.formatToParts(date).filter((p) => p.type !== "literal").map((p) => [p.type, p.value])
+    partsFormatter(zone).formatToParts(date).filter((p) => p.type !== "literal").map((p) => [p.type, p.value])
   );
   const asUtc = Date.UTC(
     Number(parts.year), Number(parts.month) - 1, Number(parts.day),
@@ -26,9 +39,9 @@ function zoneOffsetMs(date) {
   return asUtc - date.getTime();
 }
 
-/* "2026-09-15T14:30" (New York wall clock) -> Date (UTC instant).
+/* "2026-09-15T14:30" (New York wall clock, or `zone`'s) -> Date (UTC instant).
    Returns null when the string is absent or malformed. */
-export function parseLocalDateTime(text) {
+export function parseLocalDateTime(text, zone = ZONE) {
   if (typeof text !== "string") return null;
   const match = text.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return null;
@@ -37,10 +50,31 @@ export function parseLocalDateTime(text) {
   /* First guess using the offset at the naive instant, then correct once --
      two passes settle every case except the hour that does not exist on the
      spring-forward boundary, which lands on the following hour. */
-  let guess = new Date(naive - zoneOffsetMs(new Date(naive)));
-  guess = new Date(naive - zoneOffsetMs(guess));
+  let guess = new Date(naive - zoneOffsetMs(new Date(naive), zone));
+  guess = new Date(naive - zoneOffsetMs(guess, zone));
   if (Number.isNaN(guess.getTime())) return null;
   return guess;
+}
+
+/* Date -> { year, month, day, hour, minute } on the wall clock in `zone`. */
+export function zonedParts(date, zone = ZONE) {
+  const p = Object.fromEntries(
+    partsFormatter(zone).formatToParts(date).filter((x) => x.type !== "literal").map((x) => [x.type, x.value])
+  );
+  return {
+    year: Number(p.year), month: Number(p.month), day: Number(p.day),
+    hour: Number(p.hour) % 24, minute: Number(p.minute),
+  };
+}
+
+/* Whether `zone` names a real IANA time zone. */
+export function isValidZone(zone) {
+  try {
+    partsFormatter(zone);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /* Date -> "2026-09-15T14:30" in New York, for pre-filling datetime-local. */

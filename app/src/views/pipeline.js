@@ -32,6 +32,7 @@ export function pipelinePage({
 
   const body = html`
 <h1>Pipeline</h1>
+<p class="small mb-10"><a href="/import">+ Import prospects</a></p>
 
 <form method="GET" action="/pipeline" class="card">
   <div class="filters">

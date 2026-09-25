@@ -9,6 +9,11 @@
 #   FLY_API_TOKEN  - from fly.io/user/personal_access_tokens
 #   APP_PASSWORD   - the password you and Isa will type to sign in
 #
+# Text-back (optional -- without these it stays switched off):
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN          required together
+#   TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET      recommended, together
+#   TWILIO_MESSAGING_SERVICE_SID                   the A2P-registered service
+#
 # Every step checks before it acts, so running this again is safe: it will not
 # make a second database or a second app.
 
@@ -214,6 +219,29 @@ jobs:
               APP_USERS="${OPERATORS}" \
               SESSION_SECRET="${SESSION_SECRET}"
           fi
+
+      - name: Stage the Twilio secrets, if they are set
+        # Optional. Without them the app deploys with text-back switched off
+        # and says so on screen; everything else is unaffected. Values never
+        # reach the log: GitHub masks secrets and flyctl's output is dropped.
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_API_KEY_SID: ${{ secrets.TWILIO_API_KEY_SID }}
+          TWILIO_API_KEY_SECRET: ${{ secrets.TWILIO_API_KEY_SECRET }}
+          TWILIO_MESSAGING_SERVICE_SID: ${{ secrets.TWILIO_MESSAGING_SERVICE_SID }}
+        run: |
+          set -euo pipefail
+          args=()
+          for name in TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_API_KEY_SID TWILIO_API_KEY_SECRET TWILIO_MESSAGING_SERVICE_SID; do
+            if [ -n "${!name:-}" ]; then args+=("${name}=${!name}"); fi
+          done
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "No Twilio secrets in this repository: text-back stays off. Everything else deploys as normal."
+            exit 0
+          fi
+          flyctl secrets set --app "${APP}" --stage "${args[@]}" > /dev/null
+          echo "Staged ${#args[@]} Twilio secret(s)."
 
       - name: Deploy
         run: flyctl deploy --app "${APP}" --config fly.toml --remote-only

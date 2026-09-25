@@ -7,8 +7,11 @@ import {
 import { toLocalInputValue } from "../time.js";
 
 export function companyPage({
-  operator, company, contacts, calls, trials, client, payments, activity, flash, error,
+  operator, company, contacts, calls, trials, client, payments, activity, flash, error, delivery = null,
 }) {
+  /* Text-back sits with the trial and client cards once it matters to this
+     business; for a plain prospect it waits further down. */
+  const deliveryUp = Boolean(delivery && (delivery.hasLine || client || trials.length));
   const body = html`
 <h1>${company.name}</h1>
 <p class="muted small mb-12">
@@ -34,6 +37,7 @@ ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ""}
 
 ${client ? clientCard(client, payments) : ""}
 ${trials.length ? trialsCard(trials, client) : ""}
+${deliveryUp ? delivery.card : ""}
 
 <div class="card">
   <div class="section-title mb-10">Log a call</div>
@@ -170,6 +174,8 @@ ${!client ? html`
     <button class="btn btn-primary" type="submit">Start client</button>
   </form>
 </div>` : ""}
+
+${delivery && !deliveryUp ? delivery.card : ""}
 
 <div class="card">
   <div class="card-head"><span class="section-title">Activity</span></div>

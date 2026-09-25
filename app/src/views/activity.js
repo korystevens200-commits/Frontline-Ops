@@ -2,6 +2,8 @@ import { html, queryString } from "../html.js";
 import { layout } from "./layout.js";
 import { formatDateTime } from "./components.js";
 
+export const ENTITY_TYPES = ["call", "company", "trial", "client", "import", "line", "conversation"];
+
 export function activityPage({ operator, rows, actors, filters, page, pages, flash }) {
   const body = html`
 <h1>Activity</h1>
@@ -18,7 +20,7 @@ export function activityPage({ operator, rows, actors, filters, page, pages, fla
     </select>
     <select name="entity" aria-label="Type">
       <option value="">All types</option>
-      ${["call", "company", "trial", "client", "import"].map((t) => html`
+      ${ENTITY_TYPES.map((t) => html`
         <option value="${t}" ${filters.entity === t ? "selected" : ""}>${t}</option>`)}
     </select>
   </div>
@@ -34,6 +36,8 @@ export function activityPage({ operator, rows, actors, filters, page, pages, fla
           ${row.actor} · ${row.action}
           ${row.entity_type === "company" && row.entity_id
             ? html` · <a href="/company/${row.entity_id}">open</a>` : ""}
+          ${row.entity_type === "conversation" && row.entity_id
+            ? html` · <a href="/conversation/${row.entity_id}">open</a>` : ""}
         </div>
         <div class="row-sub">${formatDateTime(row.created_at)} · ${row.entity_type}</div>
         ${row.detail ? html`<div class="small mt-4">${row.detail}</div>` : ""}

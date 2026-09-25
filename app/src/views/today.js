@@ -18,10 +18,12 @@ const SIMPLE = [
 
 export function todayPage({
   operator, company, counters, callbacksDue, callbacksLater,
-  othersClaims, depth, byOperator, flash,
+  othersClaims, depth, byOperator, flash, delivery = null,
 }) {
   const body = html`
 <h1 class="sr-only">Today</h1>
+
+${deliveryBanner(delivery)}
 
 <div class="counters">
   <div class="counter"><div class="n">${counters.dials}</div><div class="l">Dials</div></div>
@@ -60,6 +62,8 @@ ${callbacksDue.length ? html`
       </div>`)}
   </div>` : ""}
 
+${delivery?.trials.length ? trialsEndingCard(delivery.trials) : ""}
+
 ${callbacksLater.length ? html`
   <div class="card">
     <div class="section-title mb-8">Later today</div>
@@ -87,6 +91,46 @@ ${byOperator.length > 1 ? html`
 </p>`;
 
   return layout({ title: "Today", operator, active: "today", body, flash });
+}
+
+/* Text-back broken in a way that is losing clients' customers right now.
+   The one thing allowed to push the dial card down, and only while true. */
+function deliveryBanner(delivery) {
+  if (!delivery) return "";
+  if (delivery.providerDown) {
+    return html`<div class="alert alert-error" role="alert">
+      Text-back is off: ${delivery.providerReason} Missed calls are not being texted.</div>`;
+  }
+  if (delivery.health.stalled) {
+    return html`<div class="alert alert-error" role="alert">
+      Texts are stuck: ${delivery.health.queued} waiting, oldest ${Math.round(delivery.health.oldest_due_seconds / 60)} min.
+      <a href="/numbers#delivery">Details</a></div>`;
+  }
+  return "";
+}
+
+/* Trials about to stop texting. Losing one of these silently is losing a
+   client who liked the product. */
+function trialsEndingCard(trials) {
+  const note = {
+    ending: (t) => `trial ends ${formatDateTime(t.ends_at)}`,
+    grace: (t) => `trial over — texts stop ${formatDateTime(t.graceEnds)}`,
+    stopped: () => "trial over — texts stopped",
+  };
+  return html`
+<div class="card">
+  <div class="card-head">
+    <h2>Trials ending</h2>
+    <span class="pill pill-expired">${trials.length}</span>
+  </div>
+  ${trials.map((t) => html`
+    <div class="row">
+      <div class="row-main">
+        <div class="row-title"><a href="/company/${t.company_id}#line">${t.company_name}</a></div>
+        <div class="row-sub ${t.state === "ending" ? "c-warn" : "c-danger"}">${note[t.state](t)} · convert or let it lapse</div>
+      </div>
+    </div>`)}
+</div>`;
 }
 
 /* Who else is holding what. Capped at two banners: with a second caller there
@@ -167,7 +211,7 @@ function emptyQueue(depth) {
   <div class="empty">
     ${depth.total === 0
       ? html`<strong>Queue is empty.</strong><br>Every company has been worked through.
-             Import more prospects to keep going.`
+             <a href="/import">Import more prospects</a> to keep going.`
       : html`<strong>Nothing free right now.</strong><br>
              The remaining ${depth.total} are held by someone else. Holds expire after ${CLAIM_MINUTES} minutes.`}
   </div>

@@ -14,6 +14,62 @@ import {
   requireId, requireString, optionalString, requireEnum, optionalInt,
   requireMoneyCents, normalizePhone, ValidationError,
 } from "../validate.js";
+import { getProvider } from "../providers/sms.js";
+import { liveLineForCompany, lineTemplates } from "../delivery/lines.js";
+import { entitlementFor } from "../delivery/entitlement.js";
+import { deliveryMetrics, conversationsThisMonth } from "../delivery/metrics.js";
+import { composeTextback, contactLanguages } from "../delivery/compose.js";
+import { countSegments } from "../delivery/segments.js";
+import { lineSection } from "../views/line.js";
+import { formatDate } from "../time.js";
+
+/* The window the line's numbers cover: a paying client's last 30 days, a
+   trial since it started (the figure that sells the conversion), otherwise
+   everything since the line went live. */
+function metricsWindow({ client, trials, line, now }) {
+  if (client?.status === "active") {
+    return { from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), label: "Last 30 days" };
+  }
+  const trial = trials[0];
+  if (trial) return { from: trial.started_at, label: `Trial so far (since ${formatDate(trial.started_at)})` };
+  return { from: line.created_at, label: `Since the line went live (${formatDate(line.created_at)})` };
+}
+
+async function lineCard({ company, contacts, trials, client }) {
+  const handle = { query, one };
+  const provider = getProvider();
+  const line = await liveLineForCompany(handle, company.id);
+  if (!line) return { hasLine: false, card: lineSection({ company, contacts, line: null, provider }) };
+
+  const now = new Date();
+  const window = metricsWindow({ client, trials, line, now });
+  const [entitlement, metrics, monthConversations, conversations, templates] = await Promise.all([
+    entitlementFor(handle, company.id, now),
+    deliveryMetrics(handle, { lineId: line.id, from: window.from, to: now }),
+    conversationsThisMonth(handle, line.id, now),
+    query(
+      `SELECT c.*, m.body AS last_body, m.direction AS last_direction, m.error_code AS last_error
+         FROM conversations c
+         LEFT JOIN LATERAL (
+           SELECT body, direction, error_code FROM messages
+            WHERE conversation_id = c.id AND kind <> 'owner_alert'
+            ORDER BY created_at DESC, id DESC LIMIT 1
+         ) m ON true
+        WHERE c.line_id = $1
+        ORDER BY c.last_activity_at DESC LIMIT 5`,
+      [line.id]
+    ),
+    lineTemplates(handle, line.id),
+  ]);
+  const previewBody = composeTextback(line, contactLanguages(line), templates);
+  return {
+    hasLine: true,
+    card: lineSection({
+      company, contacts, line, entitlement, metrics, window, monthConversations, conversations, templates,
+      preview: { body: previewBody, ...countSegments(previewBody) }, provider,
+    }),
+  };
+}
 
 async function loadCompany(companyId) {
   return one(`SELECT * FROM companies WHERE id = $1`, [companyId]);
@@ -54,11 +110,14 @@ export default async function companyRoutes(app) {
       ? await query(`SELECT * FROM payments WHERE client_id = $1 ORDER BY paid_at DESC`, [client.id])
       : [];
 
+    const delivery = await lineCard({ company, contacts, trials, client });
+
     reply.type("text/html; charset=utf-8");
     return companyPage({
       operator: request.operator, company, contacts, calls, trials, client, payments,
       activity, flash: flashFrom(request),
       error: request.query?.msg ? String(request.query.msg).slice(0, 300) : null,
+      delivery,
     }).value;
   });
 

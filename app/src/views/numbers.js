@@ -2,7 +2,7 @@ import { html, raw } from "../html.js";
 import { layout } from "./layout.js";
 import { money, percent, OUTCOME_LABELS } from "./components.js";
 
-export function numbersPage({ operator, f, series, outcomes, missed, flash }) {
+export function numbersPage({ operator, f, series, outcomes, missed, flash, textback = null }) {
   const body = html`
 <h1>Numbers</h1>
 
@@ -108,9 +108,71 @@ export function numbersPage({ operator, f, series, outcomes, missed, flash }) {
     <span class="funnel-n">${f.clients_churned}</span>
     <span class="funnel-rate">${percent(f.clients_churned, f.clients_ever)}</span>
   </div>
-</div>`;
+</div>
+
+${textback ? textbackSection(textback) : ""}`;
 
   return layout({ title: "Numbers", operator, active: "numbers", body, flash });
+}
+
+/* Delivery across every client: what text-back did, and whether the sender
+   is keeping up. The pause-all switch lives here, one tap from anywhere. */
+function textbackSection({ metrics: m, lines, health, provider, days }) {
+  const row = (label, n, rate = "—") => html`
+    <div class="funnel-step">
+      <span class="funnel-label">${label}</span>
+      <span class="funnel-n">${n}</span>
+      <span class="funnel-rate">${rate}</span>
+    </div>`;
+  return html`
+<div class="card" id="delivery">
+  <div class="card-head">
+    <h2>Text-back</h2>
+    <span class="tiny muted">last ${days} days</span>
+  </div>
+  ${!provider.enabled ? html`<div class="alert alert-warn">Not switched on: ${provider.reason}</div>` : ""}
+  ${health.stalled ? html`<div class="alert alert-error" role="alert">
+    Sender is behind: ${health.queued} texts waiting, oldest ${Math.round(health.oldest_due_seconds / 60)} min.</div>` : ""}
+  ${health.carrier_filtered_7d ? html`<div class="alert alert-warn">
+    ${health.carrier_filtered_7d} text${health.carrier_filtered_7d === 1 ? "" : "s"} blocked by carriers as spam this week
+    (error 30007). Check the A2P registration and the wording.</div>` : ""}
+
+  <div class="stat-grid mb-12">
+    <div class="stat"><div class="n">${lines.active}</div><div class="l">Client lines live</div></div>
+    <div class="stat"><div class="n">${lines.paused}</div><div class="l">Paused</div></div>
+    <div class="stat accent"><div class="n">${m.texted}</div><div class="l">Missed calls texted</div></div>
+    <div class="stat money"><div class="n">${m.leads_captured}</div><div class="l">Leads captured</div></div>
+  </div>
+
+  ${row("Missed calls", m.missed_calls)}
+  ${row("Texted back", m.texted, percent(m.texted, m.missed_calls))}
+  ${row("Delivered", m.delivered, percent(m.delivered, m.texts_sent))}
+  ${row("Customer replies", m.replies)}
+  ${row("Leads captured", m.leads_captured, percent(m.leads_captured, m.texted))}
+  ${row("Follow-ups sent", m.followups_sent)}
+  ${row("Replied after a follow-up", m.replied_after_followup, percent(m.replied_after_followup, m.followups_sent))}
+  ${row("Owner alerts", m.owner_alerts)}
+  ${row("Opt-outs", m.opt_outs)}
+  ${row("Failed texts", m.failed)}
+  ${row("SMS segments billed", m.segments)}
+  <p class="tiny muted mt-10">
+    Sender: ${health.queued} queued · ${health.failed_24h} failed in 24h ·
+    ${health.unknown_7d} unconfirmed this week${lines.demo ? html` · ${lines.demo} demo line${lines.demo === 1 ? "" : "s"}` : ""}
+  </p>
+
+  ${lines.active + lines.demo > 0 ? html`
+  <details class="mt-8">
+    <summary>Pause every line</summary>
+    <form method="POST" action="/lines/pause-all" class="mt-10">
+      <p class="small muted mb-10">
+        Stops all texting on every line at once — for a wording mistake or a carrier problem.
+        Missed calls are still recorded. Resume each line from its company page.
+      </p>
+      <label class="check"><input type="checkbox" name="confirm" value="yes" required> Pause all ${lines.active + lines.demo} lines</label>
+      <button class="btn btn-danger" type="submit">Pause everything</button>
+    </form>
+  </details>` : ""}
+</div>`;
 }
 
 /* Inline SVG bar chart. No chart library, no client-side JavaScript: the

@@ -8,10 +8,16 @@ import { html, raw } from "../html.js";
 
 const NAV = [
   { href: "/today",    label: "Today",    icon: "▶", key: "today" },
+  { href: "/inbox",    label: "Inbox",    icon: "✉", key: "inbox", badge: true },
   { href: "/pipeline", label: "Pipeline", icon: "≡", key: "pipeline" },
   { href: "/numbers",  label: "Numbers",  icon: "▦", key: "numbers" },
   { href: "/activity", label: "Activity", icon: "↻", key: "activity" },
 ];
+
+/* Where the count of replies waiting on the owner goes. Filled in on the way
+   out by the server's onSend hook, so no screen has to fetch it itself; an
+   unfilled slot renders nothing (.badge:empty). */
+export const INBOX_BADGE_SLOT = "<!--inbox-badge-->";
 
 export function layout({ title, operator, active = "", body, flash = null }) {
   return raw(`<!doctype html>
@@ -61,7 +67,7 @@ function nav(active) {
   ${NAV.map((item) => html`
     <a href="${item.href}" class="${item.key === active ? "active" : ""}">
       <span class="ico" aria-hidden="true">${item.icon}</span>
-      <span>${item.label}</span>
+      <span>${item.label}${item.badge ? html`<span class="badge">${raw(INBOX_BADGE_SLOT)}</span>` : ""}</span>
     </a>`)}
 </nav>`;
 }
