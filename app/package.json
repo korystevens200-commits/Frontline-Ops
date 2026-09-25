@@ -13,7 +13,8 @@
     "migrate": "node scripts/migrate.js",
     "import": "node scripts/import-csv.js",
     "hash-password": "node scripts/hash-password.js",
-    "test": "node --test tests/*.js"
+    "test": "node --test --test-concurrency=1 tests/*.js",
+    "simulate": "node scripts/simulate.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

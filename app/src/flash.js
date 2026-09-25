@@ -13,6 +13,18 @@ const MESSAGES = {
   trial_saved: "Trial updated.",
   note_saved: "Notes saved.",
   signed_out: "Signed out.",
+  line_created: "Text-back line is live.",
+  line_saved: "Line settings saved.",
+  wording_saved: "Wording saved.",
+  line_paused: "Line paused — no texts will go out.",
+  line_resumed: "Line resumed.",
+  line_released: "Number released.",
+  lines_paused_all: "Every line paused.",
+  test_sent: "Test text queued to the owner's phone.",
+  conversation_closed: "Marked handled.",
+  conversation_reopened: "Reopened.",
+  imported: "Import finished.",
+  import_discarded: "Import discarded.",
 };
 
 const ERRORS = {

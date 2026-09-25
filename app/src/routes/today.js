@@ -9,6 +9,19 @@ import { flashFrom, errorRedirect } from "../flash.js";
 import {
   requireId, requireEnum, optionalString, optionalInt, requireInt, ValidationError,
 } from "../validate.js";
+import { getProvider } from "../providers/sms.js";
+import { deliveryAttention } from "../delivery/attention.js";
+
+/* Text-back's claims on the Today screen are secondary to the call loop, so
+   a failure fetching them costs that card, never the screen. */
+async function deliveryAttentionSafely(request) {
+  try {
+    return await deliveryAttention({ query, one }, getProvider());
+  } catch (err) {
+    request.log.error({ err }, "delivery attention failed");
+    return null;
+  }
+}
 
 const SIMPLE_OUTCOMES = ["no_answer", "gatekeeper", "not_interested", "dead"];
 const DETAIL_OUTCOMES = OUTCOMES_NEEDING_DETAIL;
@@ -26,13 +39,14 @@ export default async function todayRoutes(app) {
        people. */
     const company = await claimNext(handle, operator, start);
 
-    const [counters, byOperator, due, later, others, depth] = await Promise.all([
+    const [counters, byOperator, due, later, others, depth, delivery] = await Promise.all([
       todayCounters({ start, end }),
       todayByOperator({ start, end }),
       callbacksDue(handle, { through: new Date() }),
       callbacksLater(handle, { from: new Date(), until: end }),
       claimsByOthers(handle, operator),
       queueDepth(handle, start),
+      deliveryAttentionSafely(request),
     ]);
 
     let enriched = company;
@@ -48,7 +62,7 @@ export default async function todayRoutes(app) {
     reply.type("text/html; charset=utf-8");
     return todayPage({
       operator, company: enriched, counters, callbacksDue: due, callbacksLater: later,
-      othersClaims: others, depth, byOperator, flash: flashFrom(request),
+      othersClaims: others, depth, byOperator, flash: flashFrom(request), delivery,
     }).value;
   });
 

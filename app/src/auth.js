@@ -76,6 +76,12 @@ export function clearSession(reply) {
 /* Returns the operator name, or null when there is no valid, unexpired,
    correctly-signed session naming a operator still on the roster. */
 export function readSession(request) {
+  return readSessionData(request)?.user ?? null;
+}
+
+/* The whole session -- { user, iat } -- for the CSRF token, which is bound to
+   the session's issue time as well as the name. */
+export function readSessionData(request) {
   const cookie = request.cookies?.[SESSION_COOKIE];
   if (!cookie) return null;
   const unsigned = request.unsignCookie(cookie);
@@ -86,7 +92,7 @@ export function readSession(request) {
     if (Math.floor(Date.now() / 1000) - data.iat > SESSION_MAX_AGE_SECONDS) return null;
     /* Removing a name from APP_USERS invalidates their sessions immediately. */
     if (!isKnownOperator(data.user)) return null;
-    return data.user;
+    return { user: data.user, iat: data.iat };
   } catch {
     return null;
   }
@@ -94,13 +100,14 @@ export function readSession(request) {
 
 /* preHandler guard for every route except /login, /logout and /healthz. */
 export function requireAuth(request, reply, done) {
-  const user = readSession(request);
-  if (!user) {
+  const session = readSessionData(request);
+  if (!session) {
     const target = request.raw.url || "/";
     const next = target.startsWith("/login") ? "" : `?next=${encodeURIComponent(target)}`;
     reply.redirect(`/login${next}`, 303);
     return;
   }
-  request.operator = user;
+  request.operator = session.user;
+  request.session = session;
   done();
 }

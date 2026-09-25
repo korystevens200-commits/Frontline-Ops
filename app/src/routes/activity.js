@@ -1,10 +1,9 @@
 /* The append-only audit trail, readable. */
 import { query } from "../db.js";
-import { activityPage } from "../views/activity.js";
+import { activityPage, ENTITY_TYPES } from "../views/activity.js";
 import { flashFrom } from "../flash.js";
 
 const PAGE_SIZE = 60;
-const ENTITY_TYPES = ["call", "company", "trial", "client", "import"];
 
 export default async function activityRoutes(app) {
   app.get("/activity", async (request, reply) => {
